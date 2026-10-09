@@ -1,0 +1,6 @@
+{
+  "name": "Converte-mp3",
+  "description": "أداة ذكية لتحويل وفصل الصوتيات من مقاطع الفيديو والملفات الصوتية إلى صيغ متعددة محلياً داخل المتصفح",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

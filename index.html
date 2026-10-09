@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Converte-mp3 - فصل وتحويل الصوتيات بذكاء وسرعة البرق</title>
+        <meta name="description" content="أداة ذكية لتحويل وفصل الصوتيات من مقاطع الفيديو والملفات الصوتية إلى صيغ متعددة محلياً داخل المتصفح" />
+        <meta property="og:title" content="Converte-mp3" />
+        <meta property="og:description" content="أداة ذكية لتحويل وفصل الصوتيات من مقاطع الفيديو والملفات الصوتية إلى صيغ متعددة محلياً داخل المتصفح" />
+        <meta property="og:type" content="website" />
+        <meta name="twitter:card" content="summary_large_image" />
+
+        <!-- استدعاء مكتبة Lottie لتشغيل الأنيميشن الترحيبي -->
+        <script src="https://unpkg.com/@lottiefiles/dotlottie-wc@0.9.4/dist/dotlottie-wc.js" type="module"></script>
+        <link rel="icon" type="image/png" href="/favicon-96x96.png" sizes="96x96" />
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+        <link rel="shortcut icon" href="/favicon.ico" />
+        <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+        <meta name="apple-mobile-web-app-title" content="Converte-mp3" />
+        <link rel="stylesheet" href="/css/style.css" />
+    </head>
+    <body>
+        <!-- اللوجو الصغير المثبت في أسفل اليسار -->
+        <div class="fixed-lottie-logo" id="fixed-logo">
+            <dotlottie-wc
+                src="https://lottie.host/5bf3ae3f-1c46-44da-81df-daf2eb20815c/53tuwxnlpz.lottie"
+                autoplay
+                loop></dotlottie-wc>
+        </div>
+
+        <!-- الدوائر المضيئة الناعمة في خلفية الموقع -->
+        <div class="bg-blur blur-1"></div>
+        <div class="bg-blur blur-2"></div>
+
+        <!-- ==========================================
+         🔥 القسم الأول: دخلة الموقع الترحيبية (Hero Section)
+         ========================================== -->
+        <section class="hero-section">
+            <div class="hero-content">
+                <span class="welcome-badge">مرحباً بك في منصتي الرقمية ✨</span>
+                <h1 class="hero-title">فصل وتحويل الصوتيات بذكاء وسرعة البرق</h1>
+
+                <div class="hero-lottie">
+                    <dotlottie-wc
+                        src="https://lottie.host/a40f848a-68c1-4654-ae0f-00b0d2bea8c5/j6UjtK1JRV.lottie"
+                        autoplay
+                        loop></dotlottie-wc>
+                </div>
+
+                <div class="scroll-indicator">
+                    <p>مرر لأسفل للبدء</p>
+                    <div class="arrow">↓</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==========================================
+         💻 القسم الثاني: قسم الخدمات والمحول (Main Section)
+         ========================================== -->
+        <section class="main-content-section">
+            <div class="split-container">
+                <!-- 📄 الجزء الأيمن: الكلام التعريفي عن المنصة وعنك -->
+                <div class="info-side">
+                    <a href="https://ahmello-web.vercel.app/" target="_blank" rel="noopener noreferrer">
+                        <div class="brand-logo">Ahmed<span>|Web</span></div>
+                    </a>
+                    <h2>أهلاً بك، أنا أحمد 👋</h2>
+                    <p class="about-text">
+                        مرحباً بك في النسخة المطورة من منصتي؛ الآن يمكنك <strong>استخراج الصوت من الفيديو</strong> أو <strong>تحويل صيغ
+                        الملفات الصوتية الحالية</strong> إلى 5 صيغ مختلفة بنقاء صوتي استثنائي وبدون فقد للجودة.
+                    </p>
+                    <div class="features-list">
+                        <div class="feature-item">
+                            <span class="f-icon">🎛️</span>
+                            <div>
+                                <h4>أداة مزدوجة ذكية</h4>
+                                <p>افصل الصوت من مقاطع الفيديو أو قم بتحويل صيغ الملفات الصوتية مباشرة عبر تقنية WebAssembly.</p>
+                            </div>
+                        </div>
+                        <div class="feature-item">
+                            <span class="f-icon">🚫</span>
+                            <div>
+                                <h4>بدون إعلانات مزعجة</h4>
+                                <p>تصفح نظيف ومريح تماماً بدون نوافذ منبثقة أو إعلانات تعيق عملك.</p>
+                            </div>
+                        </div>
+                        <div class="feature-item">
+                            <span class="f-icon">🔒</span>
+                            <div>
+                                <h4>أمان وخصوصية تامة</h4>
+                                <p>تتم معالجة ملفاتك محلياً داخل متصفحك، ولا يتم رفع الملفات إلى أي خادم خارجي.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ⚙️ الجزء الأيسر: مربع التحويل الذكي المطور (بنظام التبويب) -->
+                <div class="converter-side">
+                    <div class="converter-box">
+                        <!-- 📑 أزرار التبويب للتبديل بين الفيديوهات والصوتيات -->
+                        <div class="tabs-container">
+                            <button class="tab-btn active" id="tab-video" data-mode="video" type="button">🎬 فيديو إلى صوت</button>
+                            <button class="tab-btn" id="tab-audio" data-mode="audio" type="button">🎵 محول صيغ الصوت</button>
+                        </div>
+
+                        <!-- منطقة الرفع المرنة (تستقبل فيديو أو صوت حسب اختيار التبويب) -->
+                        <div class="drop-zone" id="drop-zone" onclick="document.getElementById('file-input').click()">
+                            <div class="drop-icon">
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    width="36"
+                                    height="36"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="1.5">
+                                    <path d="M12 5v14M5 12h14" stroke-linecap="round" stroke-linejoin="round" />
+                                </svg>
+                            </div>
+                            <h3 id="upload-text">اسحب ملف فيديو هنا أو اضغط للتصفح</h3>
+                            <!-- دعم الامتدادات الصوتية والمرئية معاً -->
+                            <input type="file" id="file-input" accept="video/*,video/mp4,video/webm,video/quicktime,video/x-matroska" style="display: none;" />
+                        </div>
+                        <!-- 📸 بوكس عرض غلاف الفيديو المختار مدمج في الديزاين -->
+                        <div class="preview-thumbnail-box" id="preview-thumbnail-container">
+                            <img id="video-preview" src="" alt="غلاف الفيديو المختار" />
+                        </div>
+                        <!-- بطاقة تفاصيل الملف المختار -->
+                        <div class="file-details-card" id="file-details-card">
+                            <div class="file-info">
+                                <span class="file-icon" id="file-type-icon">🎬</span>
+                                <div class="file-meta">
+                                    <div class="file-name" id="detail-name">file.mp4</div>
+                                    <div class="file-size" id="detail-size">0.0 MB</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- قائمة اختيار صيغة الصوت المخرجة الخماسية -->
+                        <div class="format-selector-wrapper">
+                            <label for="format-select">اختر الصيغة الصوتية المطلوبة:</label>
+                            <select id="format-select" class="format-dropdown">
+                                <option value="mp3" selected>MP3 (جودة 192kbps - عالمية ومضغوطة)</option>
+                                <option value="wav">WAV (جودة استوديو خام - بدون فقد)</option>
+                                <option value="m4a">M4A / AAC (كفاءة عالية - أجهزة أبل)</option>
+                                <option value="flac">FLAC (نقاء فائق لعشاق الصوتيات)</option>
+                                <option value="ogg">OGG Vorbis (صيغة الويب والألعاب)</option>
+                            </select>
+                        </div>
+
+                        <!-- شريط التقدم المطور الملون بالبنفسجي -->
+                        <div class="progress-wrapper" id="progress-container">
+                            <div class="progress-track">
+                                <div class="progress-bar" id="progressBar"></div>
+                            </div>
+                            <div class="progress-status">
+                                <span id="status-percentage">0%</span>
+                                <span id="status-label">جاري المعالجة...</span>
+                            </div>
+                        </div>
+
+                        <!-- زر بدء المعالجة والتحميل الفوري -->
+                        <button id="convert-btn" class="main-btn" type="button">
+                            <span>استخراج وتحويل الصوت الآن 🚀</span>
+                        </button>
+
+                        <!-- زر إلغاء العملية أثناء التشغيل -->
+                        <button id="cancel-btn" class="cancel-btn" style="display: none;" type="button">
+                            <span>إلغاء التحويل ✕</span>
+                        </button>
+
+                        <div id="status" class="status-footer">الحالة: في انتظار ملف...</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ربط ملف الجافا سكريبت المطور للمشروع -->
+        <script src="/js/script.js"></script>
+    </body>
+</html>
