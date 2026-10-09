@@ -1,6 +1,7 @@
 /**
  * Converte-mp3: Client-side Audio/Video Converter
  * Powered by FFmpeg WebAssembly - 100% In-Browser Local Processing
+ * Fully optimized for Mobile Browsers (iOS Safari & Android Chrome) and Desktop.
  */
 
 // ==========================================
@@ -8,6 +9,10 @@
 // ==========================================
 const MAX_FILE_SIZE_MB = 150;        // الحد الأقصى لحجم الملف بالميجابايت
 const MAX_DURATION_MINUTES = 30;     // الحد الأقصى لمدة الملف بالدقائق
+
+// الامتدادات الشائعة على الهواتف وأجهزة الكمبيوتر
+const VIDEO_EXTENSIONS = ["mp4", "mov", "m4v", "webm", "mkv", "avi", "3gp", "3gpp", "ts", "mts", "wmv", "flv", "asf", "mpg", "mpeg"];
+const AUDIO_EXTENSIONS = ["mp3", "wav", "m4a", "aac", "ogg", "oga", "opus", "flac", "alac", "aiff", "aif", "caf", "amr", "wma", "weba", "mp2"];
 
 // ==========================================
 // 🎯 1. استدعاء عناصر الواجهة (DOM Elements)
@@ -34,6 +39,12 @@ const fileTypeIcon = document.getElementById("file-type-icon");
 const tabVideo = document.getElementById("tab-video");
 const tabAudio = document.getElementById("tab-audio");
 
+// عناصر التنزيل والمشاركة للموبايل
+const downloadActions = document.getElementById("download-actions");
+const downloadLinkBtn = document.getElementById("download-link-btn");
+const downloadBtnText = document.getElementById("download-btn-text");
+const shareBtn = document.getElementById("share-btn");
+
 // ==========================================
 // 🧠 2. متغيرات الحالة وإدارة الذاكرة (State)
 // ==========================================
@@ -41,8 +52,16 @@ let currentMode = "video";
 let currentFile = null;
 let currentBlobUrl = null;
 let currentThumbnailUrl = null;
+let currentOutputFile = null;
 let isConverting = false;
+
+// إدارة الـ Worker وتهيئة المحرك الكسولة (Lazy Loading)
 let converterWorker = null;
+let isWorkerReady = false;
+let workerInitPromise = null;
+let conversionCounter = 0;
+let activeConversionId = null;
+
 let phraseInterval = null;
 
 const loadingPhrases = [
@@ -52,45 +71,96 @@ const loadingPhrases = [
     "قد يستغرق فك الفيديو بضع ثوانٍ إضافية حسب سرعة جهازك ✨"
 ];
 
+// دالة لتنسيق الوقت (ثوانٍ إلى دقيقة:ثانية)
+function formatTime(seconds) {
+    if (!seconds || isNaN(seconds)) return "00:00";
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+}
+
 // ==========================================
-// 👷 3. إدارة الـ Web Worker
+// 👷 3. إدارة الـ Web Worker والتحميل الكسول (Lazy Loading)
 // ==========================================
-function initWorker() {
-    if (converterWorker) return;
-
-    try {
-        converterWorker = new Worker("/js/converter.worker.js");
-
-        converterWorker.onmessage = function (e) {
-            const data = e.data;
-
-            if (data.type === "ready") {
-                if (!isConverting && !currentFile) {
-                    statusText.innerText = currentMode === "video"
-                        ? "الحالة: محرك التحويل جاهز، بانتظار اختيار ملف فيديو..."
-                        : "الحالة: محرك التحويل جاهز، بانتظار اختيار ملف صوتي...";
-                }
-            } else if (data.type === "status") {
-                statusText.innerText = "الحالة: " + data.message;
-            } else if (data.type === "progress") {
-                updateProgress(data.percent, data.message || `جاري التحويل... ${data.percent}%`);
-            } else if (data.type === "done") {
-                handleConversionSuccess(data);
-            } else if (data.type === "error") {
-                handleConversionError(data.message);
-            }
-        };
-
-        converterWorker.onerror = function (err) {
-            console.error("Worker error:", err);
-            handleConversionError("تعذر تشغيل محرك التحويل. تأكد من دعم متصفحك للتقنية وحاول إعادة تحميل الصفحة.");
-        };
-
-        // إرسال إشارة التهيئة المسبقة للمحرك
-        converterWorker.postMessage({ action: "init" });
-    } catch (err) {
-        console.error("Failed to start worker:", err);
+function getOrInitWorker() {
+    if (isWorkerReady && converterWorker) {
+        return Promise.resolve(converterWorker);
     }
+
+    if (workerInitPromise) {
+        return workerInitPromise;
+    }
+
+    workerInitPromise = new Promise((resolve, reject) => {
+        try {
+            if (!converterWorker) {
+                // مسار مطلق كامل لضمان عمل الـ Worker في متصفحات الهواتف والـ iframes
+                const workerUrl = new URL("/js/converter.worker.js", window.location.href).href;
+                converterWorker = new Worker(workerUrl);
+            }
+
+            const timeoutId = setTimeout(() => {
+                if (!isWorkerReady) {
+                    workerInitPromise = null;
+                    reject(new Error("استغرق تحميل محرك التحويل وقتًا أطول من المتوقع. حاول مرة أخرى."));
+                }
+            }, 60000);
+
+            converterWorker.onmessage = function (e) {
+                const data = e.data;
+
+                // إشارة الجاهزية المسبقة
+                if (data.type === "ready") {
+                    clearTimeout(timeoutId);
+                    isWorkerReady = true;
+                    resolve(converterWorker);
+                    return;
+                }
+
+                // تجاهل الرسائل التي لا تخص العملية النشطة الحالية
+                if (data.conversionId && data.conversionId !== activeConversionId) {
+                    return;
+                }
+
+                if (data.type === "progress") {
+                    const percent = Math.min(99, Math.max(0, data.percent || 0));
+                    let label = data.message || "جاري المعالجة...";
+
+                    if (data.currentTime && data.totalDuration) {
+                        label = `جاري التحويل... (${formatTime(data.currentTime)} / ${formatTime(data.totalDuration)})`;
+                    }
+
+                    updateProgress(percent, label);
+                } else if (data.type === "meta") {
+                    if (data.totalDuration) {
+                        statusText.innerText = `الحالة: تم فحص الملف (المدة: ${formatTime(data.totalDuration)} دقيقة) - جاري المعالجة...`;
+                    }
+                } else if (data.type === "done") {
+                    handleConversionSuccess(data);
+                } else if (data.type === "error") {
+                    handleConversionError(data.message);
+                }
+            };
+
+            converterWorker.onerror = function (err) {
+                clearTimeout(timeoutId);
+                console.error("Worker error:", err);
+                workerInitPromise = null;
+                isWorkerReady = false;
+                reject(new Error("تعذر تشغيل محرك التحويل. تأكد من دعم متصفحك للتقنية وحاول إعادة تحميل الصفحة."));
+            };
+
+            // إرسال إشارة التهيئة
+            converterWorker.postMessage({ action: "init" });
+
+        } catch (err) {
+            workerInitPromise = null;
+            isWorkerReady = false;
+            reject(err);
+        }
+    });
+
+    return workerInitPromise;
 }
 
 function terminateWorker() {
@@ -98,6 +168,8 @@ function terminateWorker() {
         converterWorker.terminate();
         converterWorker = null;
     }
+    isWorkerReady = false;
+    workerInitPromise = null;
 }
 
 // ==========================================
@@ -105,7 +177,6 @@ function terminateWorker() {
 // ==========================================
 document.addEventListener("DOMContentLoaded", () => {
     statusText.innerText = "الحالة: جاهز بانتظار رفع ملف فيديو...";
-    initWorker();
 });
 
 // ==========================================
@@ -124,15 +195,16 @@ document.addEventListener("DOMContentLoaded", () => {
 
         currentMode = tab.getAttribute("data-mode");
 
-        // تنظيف البيانات والذاكرة
         cleanupPreviousFile();
 
         if (currentMode === "video") {
-            fileInput.accept = "video/*,video/mp4,video/webm,video/quicktime,video/x-matroska";
+            // قبول صيغ الفيديو مع صيغ الهواتف الشائعة
+            fileInput.accept = "video/*,video/mp4,video/webm,video/quicktime,video/x-matroska,video/3gpp";
             uploadText.innerText = "اسحب ملف فيديو هنا أو اضغط للتصفح";
             statusText.innerText = "الحالة: جاهز بانتظار رفع ملف فيديو...";
         } else {
-            fileInput.accept = "audio/*,audio/mpeg,audio/wav,audio/aac,audio/ogg,audio/flac,audio/mp4";
+            // قبول صيغ الصوت مع صيغ الهواتف مثل M4A و AAC و OPUS و CAF و AMR
+            fileInput.accept = "audio/*,audio/mpeg,audio/wav,audio/aac,audio/ogg,audio/flac,audio/mp4,audio/x-m4a";
             uploadText.innerText = "اسحب الملف الصوتي هنا أو اضغط للتصفح";
             statusText.innerText = "الحالة: جاهز بانتظار رفع ملف صوتي للتحويل...";
         }
@@ -140,7 +212,7 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 // ==========================================
-// 🫳 5. السحب والإفلات (Drag and Drop UX)
+// 🫳 5. السحب والإفلات وتفاعل النقر
 // ==========================================
 ["dragenter", "dragover"].forEach((eventName) => {
     dropZone.addEventListener(
@@ -178,7 +250,7 @@ fileInput.addEventListener("change", () => {
 });
 
 // ==========================================
-// 📂 6. معالجة وفحص واستلام الملف المختار
+// 📂 6. معالجة وفحص واستلام الملف المختار مع توافق الهواتف
 // ==========================================
 async function handleFileSelection(file) {
     if (isConverting) {
@@ -189,88 +261,102 @@ async function handleFileSelection(file) {
     statusText.classList.remove("error-mode");
 
     const extension = (file.name.split(".").pop() || "").toLowerCase();
-    const isVideoExtension = ["mp4", "webm", "mov", "mkv", "avi", "wmv", "flv", "m4v"].includes(extension);
-    const isAudioExtension = ["mp3", "wav", "m4a", "aac", "flac", "ogg", "opus", "wma"].includes(extension);
+    const isKnownVideoExt = VIDEO_EXTENSIONS.includes(extension);
+    const isKnownAudioExt = AUDIO_EXTENSIONS.includes(extension);
 
-    // 1. التحقق من التوافق مع الوضع المختار
+    // التعامل مع ملفات الهواتف ذات MIME Type غير المعتاد أو الفارغ
+    const isGenericMime = !file.type || file.type === "application/octet-stream";
+    const isVideoMime = file.type.startsWith("video/");
+    const isAudioMime = file.type.startsWith("audio/");
+
+    // التحقق من توافق نوع الملف مع التبويب النشط
     if (currentMode === "video") {
-        const isVideoMime = file.type.startsWith("video/");
-        if (!isVideoMime && !isVideoExtension) {
-            showError("تم رفض الملف! يرجى رفع ملف فيديو صالح في هذا التبويب.");
+        if (!isVideoMime && !isKnownVideoExt && !isGenericMime && isKnownAudioExt) {
+            showError("هذا الملف صوتي؛ يرجى التبديل لتبويب \"محول صيغ الصوت\" أو اختيار ملف فيديو.");
             return;
         }
     } else {
-        const isAudioMime = file.type.startsWith("audio/");
-        if (!isAudioMime && !isAudioExtension) {
-            showError("تم رفض الملف! يرجى رفع ملف صوتي صالح في هذا التبويب.");
+        if (!isAudioMime && !isKnownAudioExt && !isGenericMime && isKnownVideoExt) {
+            showError("هذا الملف فيديو؛ يرجى التبديل لتبويب \"فيديو إلى صوت\" أو اختيار ملف صوتي.");
             return;
         }
     }
 
-    // 2. التحقق من حجم الملف
+    // التحقق من حجم الملف
     const sizeInMB = file.size / (1024 * 1024);
     if (sizeInMB > MAX_FILE_SIZE_MB) {
         showError(`الملف كبير جدًا للمعالجة داخل المتصفح (${sizeInMB.toFixed(1)} ميجابايت). الحد الأقصى المسموح هو ${MAX_FILE_SIZE_MB} ميجابايت لحماية ذاكرة جهازك.`);
         return;
     }
 
-    // 3. التحقق من مدة الملف لحماية المتصفح من التجمد
+    // فحص مدة الملف بشكل آمن لا يتجمد أبدًا على متصفحات الهواتف
+    let probedDuration = null;
     try {
-        const durationSec = await checkMediaDuration(file);
-        if (durationSec && durationSec > (MAX_DURATION_MINUTES * 60)) {
-            const minutes = Math.round(durationSec / 60);
+        probedDuration = await checkMediaDurationSafe(file);
+        if (probedDuration && probedDuration > (MAX_DURATION_MINUTES * 60)) {
+            const minutes = Math.round(probedDuration / 60);
             showError(`مدة الملف (${minutes} دقيقة) تتجاوز الحد الآمن للمعالجة داخل المتصفح (${MAX_DURATION_MINUTES} دقيقة).`);
             return;
         }
     } catch (_) {
-        // إذا لم يدعم المتصفح قراءة المدة مسبقاً، نترك FFmpeg يتولى ذلك
+        // في حال تعذر على المتصفح قراءة المدة، يترك المحرك للتحقق أثناء فحص المسارات
     }
 
-    // حفظ الملف كملف حالي
     currentFile = file;
 
     // تحديث بطاقة التفاصيل
     fileDetailsCard.style.display = "block";
     detailName.innerText = file.name;
-    detailSize.innerText = `${sizeInMB.toFixed(2)} ميجابايت`;
+    const durString = probedDuration ? ` • ${formatTime(probedDuration)} دقيقة` : "";
+    detailSize.innerText = `${sizeInMB.toFixed(2)} ميجابايت${durString}`;
     fileTypeIcon.innerText = currentMode === "video" ? "🎬" : "🎵";
 
     uploadText.innerText = "تم اختيار الملف بنجاح! 🎉";
-    statusText.innerText = "الحالة: جاهز تماماً لبدء التحويل الحقيقي.";
+    statusText.innerText = "الحالة: جاهز ومستعد لبدء التحويل.";
 
     progressContainer.style.display = "none";
     updateProgress(0, "");
 
     if (currentMode === "video") {
-        captureVideoThumbnail(file);
+        captureVideoThumbnailSafe(file);
     } else {
         previewThumbnailContainer.style.display = "none";
     }
 }
 
-// فحص مدة الميديا باستخدام عنصر صوت/فيديو محلي مؤقت
-function checkMediaDuration(file) {
-    return new Promise((resolve, reject) => {
-        const isVideo = file.type.startsWith("video/") || ["mp4", "webm", "mov", "mkv"].includes((file.name.split(".").pop() || "").toLowerCase());
+// فحص مدة الميديا بمهلة أمان لمنع التجمد على iOS Safari
+function checkMediaDurationSafe(file) {
+    return new Promise((resolve) => {
+        const isVideo = file.type.startsWith("video/") || VIDEO_EXTENSIONS.includes((file.name.split(".").pop() || "").toLowerCase());
         const mediaElem = document.createElement(isVideo ? "video" : "audio");
         const url = URL.createObjectURL(file);
         mediaElem.preload = "metadata";
 
+        let finished = false;
         const cleanup = () => {
+            if (finished) return;
+            finished = true;
+            clearTimeout(timer);
             URL.revokeObjectURL(url);
             mediaElem.removeAttribute("src");
             mediaElem.load();
         };
 
+        // مهلة 1500 مللي ثانية: إذا لم يرد متصفح الهاتف بميتاداتا، نواصل ولا نجمد التطبيق
+        const timer = setTimeout(() => {
+            cleanup();
+            resolve(null);
+        }, 1500);
+
         mediaElem.onloadedmetadata = () => {
             const dur = mediaElem.duration;
             cleanup();
-            resolve(dur);
+            resolve((dur && isFinite(dur) && dur > 0) ? dur : null);
         };
 
         mediaElem.onerror = () => {
             cleanup();
-            reject(new Error("Cannot read metadata"));
+            resolve(null);
         };
 
         mediaElem.src = url;
@@ -278,9 +364,9 @@ function checkMediaDuration(file) {
 }
 
 // ==========================================
-// 📸 7. استخراج غلاف الفيديو وعرضه مع تنظيف الذاكرة
+// 📸 7. استخراج غلاف الفيديو بأمان تام للهواتف
 // ==========================================
-function captureVideoThumbnail(file) {
+function captureVideoThumbnailSafe(file) {
     statusText.innerText = "الحالة: جاري توليد صورة معاينة للفيديو...";
 
     const video = document.createElement("video");
@@ -289,9 +375,34 @@ function captureVideoThumbnail(file) {
     video.muted = true;
     video.playsInline = true;
 
+    let finished = false;
+    const cleanup = () => {
+        if (finished) return;
+        finished = true;
+        clearTimeout(safetyTimer);
+        URL.revokeObjectURL(videoUrl);
+        video.removeAttribute("src");
+        video.load();
+        statusText.innerText = "الحالة: جاهز ومستعد للتحويل.";
+    };
+
+    // مهلة أمان قصيرة لمنع بقاء الحالة معلقة على الموبايل
+    const safetyTimer = setTimeout(() => {
+        previewThumbnailContainer.style.display = "none";
+        cleanup();
+    }, 2500);
+
     video.onloadeddata = () => {
-        // الانتقال لثانية 1 أو منتصف الفيديو إذا كان قصيراً جداً
-        video.currentTime = Math.min(1, Math.max(0, video.duration / 2));
+        try {
+            // التحقق من أن المدة رقم حقيقي وليس NaN على Safari
+            let seekTime = 0.5;
+            if (isFinite(video.duration) && video.duration > 0) {
+                seekTime = Math.min(1, video.duration / 2);
+            }
+            video.currentTime = seekTime;
+        } catch (_) {
+            cleanup();
+        }
     };
 
     video.onseeked = () => {
@@ -309,33 +420,26 @@ function captureVideoThumbnail(file) {
             }
 
             canvas.toBlob((blob) => {
-                if (blob) {
+                if (blob && !finished) {
                     currentThumbnailUrl = URL.createObjectURL(blob);
                     videoPreview.src = currentThumbnailUrl;
                     previewThumbnailContainer.style.display = "block";
                 }
+                cleanup();
             }, "image/jpeg", 0.7);
-        } catch (e) {
-            console.warn("Could not capture thumbnail:", e);
-        } finally {
-            URL.revokeObjectURL(videoUrl);
-            video.removeAttribute("src");
-            video.load();
-            statusText.innerText = "الحالة: جاهز ومستعد للتحويل.";
+        } catch (_) {
+            cleanup();
         }
     };
 
     video.onerror = () => {
-        URL.revokeObjectURL(videoUrl);
-        video.removeAttribute("src");
-        video.load();
         previewThumbnailContainer.style.display = "none";
-        statusText.innerText = "الحالة: جاهز ومستعد للتحويل.";
+        cleanup();
     };
 }
 
 // ==========================================
-// 🚀 8. بدء عملية التحويل الحقيقية
+// 🚀 8. بدء عملية التحويل
 // ==========================================
 convertBtn.addEventListener("click", async () => {
     if (isConverting) return;
@@ -348,14 +452,19 @@ convertBtn.addEventListener("click", async () => {
     const chosenFormat = formatSelect.value;
     const currentExt = (currentFile.name.split(".").pop() || "").toLowerCase();
 
-    // التحذير إذا كان الملف الصوتي بالفعل بالصيغة المطلوبة
     if (currentMode === "audio" && currentExt === chosenFormat) {
         showError(`عذراً! الملف الذي اخترته هو بالفعل بصيغة (${chosenFormat.toUpperCase()}). اختر صيغة أخرى.`);
         return;
     }
 
+    // إخفاء أزرار التنزيل السابقة إن وُجدت
+    if (downloadActions) downloadActions.style.display = "none";
+
     // تفعيل حالة التحويل وقفل الزر
     isConverting = true;
+    const thisConversionId = ++conversionCounter;
+    activeConversionId = thisConversionId;
+
     convertBtn.disabled = true;
     convertBtn.style.background = "#9ca3af";
     convertBtn.style.cursor = "not-allowed";
@@ -374,20 +483,36 @@ convertBtn.addEventListener("click", async () => {
         convertBtn.innerText = loadingPhrases[phraseIndex];
     }, 3500);
 
-    statusText.innerText = "الحالة: جاري إرسال الملف لمحرك التحويل...";
     progressContainer.style.display = "flex";
-    updateProgress(5, "جاري تحضير الملف...");
+
+    if (!isWorkerReady) {
+        statusText.innerText = "الحالة: جاري تحميل محرك التحويل لأول مرة...";
+        updateProgress(0, "جاري تحميل محرك التحويل (FFmpeg)...");
+    } else {
+        statusText.innerText = "الحالة: جاري تحضير ملفك للمعالجة...";
+        updateProgress(0, "جاري تجهيز الملف...");
+    }
 
     try {
-        initWorker();
+        const worker = await getOrInitWorker();
 
-        // قراءة الملف كـ ArrayBuffer
+        if (!isConverting || activeConversionId !== thisConversionId) {
+            return;
+        }
+
+        statusText.innerText = "الحالة: جاري قراءة الملف وتمريره لمحرك التحويل...";
+        updateProgress(0, "جاري قراءة الملف...");
+
         const arrayBuffer = await currentFile.arrayBuffer();
 
-        // إرسال البيانات إلى الـ Worker مع نقل الملكية (Zero-copy transfer)
-        converterWorker.postMessage(
+        if (!isConverting || activeConversionId !== thisConversionId) {
+            return;
+        }
+
+        worker.postMessage(
             {
                 action: "convert",
+                conversionId: thisConversionId,
                 fileData: arrayBuffer,
                 fileName: currentFile.name,
                 chosenFormat: chosenFormat
@@ -395,8 +520,10 @@ convertBtn.addEventListener("click", async () => {
             [arrayBuffer]
         );
     } catch (err) {
-        console.error("Conversion start error:", err);
-        handleConversionError("تعذر قراءة الملف من الذاكرة. حاول مرة أخرى.");
+        console.error("Conversion init error:", err);
+        if (activeConversionId === thisConversionId) {
+            handleConversionError(err.message || "تعذر بدء عملية التحويل. حاول مرة أخرى.");
+        }
     }
 });
 
@@ -412,31 +539,32 @@ if (cancelBtn) {
 }
 
 function cancelCurrentConversion() {
-    if (!isConverting && !converterWorker) return;
+    if (!isConverting) return;
 
-    // إنهاء الـ Worker فورياً لوقف تشغيل الـ WebAssembly وحرية الذاكرة
+    activeConversionId = null;
+    isConverting = false;
+
+    // إنهاء الـ Worker فورياً لوقف تشغيل الـ WebAssembly وتحرير الذاكرة
     terminateWorker();
 
     clearInterval(phraseInterval);
     phraseInterval = null;
-    isConverting = false;
 
     restoreConvertButton();
     if (cancelBtn) cancelBtn.style.display = "none";
+    if (downloadActions) downloadActions.style.display = "none";
     progressContainer.style.display = "none";
     updateProgress(0, "");
-
-    // إعادة تهيئة Worker جديد ونظيف في الخلفية
-    initWorker();
 }
 
 // ==========================================
-// 🎉 10. معالجة نجاح التحويل وتنزيل الملف الحقيقي
+// 🎉 10. معالجة نجاح التحويل وحفظ الملفات للهواتف والكمبيوتر
 // ==========================================
 function handleConversionSuccess(data) {
     clearInterval(phraseInterval);
     phraseInterval = null;
     isConverting = false;
+    activeConversionId = null;
 
     updateProgress(100, "اكتمل التحويل بنجاح! 🚀");
 
@@ -445,19 +573,58 @@ function handleConversionSuccess(data) {
         currentBlobUrl = null;
     }
 
-    // إنشاء الـ Blob الحقيقي بالصيغة والـ MIME type المعتمد
+    // إنشاء الـ Blob الحقيقي
     const realBlob = new Blob([data.outputBuffer], { type: data.mimeType });
     currentBlobUrl = URL.createObjectURL(realBlob);
+    currentOutputFile = new File([realBlob], data.outputFileName, { type: data.mimeType });
 
-    // تفعيل التنزيل الفوري التلقائي
-    const downloadLink = document.createElement("a");
-    downloadLink.href = currentBlobUrl;
-    downloadLink.download = data.outputFileName;
-    document.body.appendChild(downloadLink);
-    downloadLink.click();
-    document.body.removeChild(downloadLink);
+    // 1. تفعيل زر التنزيل المباشر (Direct User Action) لحل قيود التنزيل التلقائي على Safari و Android
+    if (downloadActions && downloadLinkBtn) {
+        downloadLinkBtn.href = currentBlobUrl;
+        downloadLinkBtn.download = data.outputFileName;
+        if (downloadBtnText) {
+            downloadBtnText.innerText = `تحميل ملف (${data.chosenFormat.toUpperCase()}) الآن 📥`;
+        }
+        downloadActions.style.display = "flex";
+    }
 
-    statusText.innerText = `تم التحويل إلى ملف ${data.chosenFormat.toUpperCase()} حقيقي بنجاح وتم بدء التنزيل! 🎉`;
+    // 2. التحقق من دعم واجهة المشاركة على الهواتف (Web Share API)
+    if (shareBtn && navigator.canShare) {
+        try {
+            if (navigator.canShare({ files: [currentOutputFile] })) {
+                shareBtn.style.display = "block";
+                shareBtn.onclick = async () => {
+                    try {
+                        await navigator.share({
+                            files: [currentOutputFile],
+                            title: data.outputFileName,
+                            text: `تم تحويل الصوت إلى ${data.chosenFormat.toUpperCase()} بواسطة Converte-mp3`
+                        });
+                    } catch (shareErr) {
+                        if (shareErr.name !== "AbortError") {
+                            console.warn("Share failed:", shareErr);
+                        }
+                    }
+                };
+            }
+        } catch (_) {
+            shareBtn.style.display = "none";
+        }
+    }
+
+    // 3. محاولة التنزيل التلقائي للكمبيوتر
+    try {
+        const autoDownloadLink = document.createElement("a");
+        autoDownloadLink.href = currentBlobUrl;
+        autoDownloadLink.download = data.outputFileName;
+        document.body.appendChild(autoDownloadLink);
+        autoDownloadLink.click();
+        document.body.removeChild(autoDownloadLink);
+    } catch (_) {
+        // في حال تم حظر التنزيل التلقائي على الهاتف، زر التنزيل المباشر متاح وظاهر أمام المستخدم
+    }
+
+    statusText.innerText = `تم التحويل إلى ملف ${data.chosenFormat.toUpperCase()} حقيقي بنجاح! يمكنك الضغط على زر التحميل أدناه لحفظ الملف 📥`;
     statusText.classList.remove("error-mode");
 
     restoreConvertButton();
@@ -471,6 +638,7 @@ function handleConversionError(message) {
     clearInterval(phraseInterval);
     phraseInterval = null;
     isConverting = false;
+    activeConversionId = null;
 
     statusText.innerText = "الحالة: " + message;
     statusText.classList.add("error-mode");
@@ -478,6 +646,7 @@ function handleConversionError(message) {
 
     restoreConvertButton();
     if (cancelBtn) cancelBtn.style.display = "none";
+    if (downloadActions) downloadActions.style.display = "none";
 }
 
 function showError(message) {
@@ -491,6 +660,7 @@ function showError(message) {
 function cleanupPreviousFile() {
     fileInput.value = "";
     currentFile = null;
+    currentOutputFile = null;
 
     if (currentBlobUrl) {
         URL.revokeObjectURL(currentBlobUrl);
@@ -509,6 +679,7 @@ function cleanupPreviousFile() {
     updateProgress(0, "");
 
     if (cancelBtn) cancelBtn.style.display = "none";
+    if (downloadActions) downloadActions.style.display = "none";
     restoreConvertButton();
 }
 
